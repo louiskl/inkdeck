@@ -1,5 +1,9 @@
 -- Canvas implementation on top of KOReader's Blitbuffer + text widgets.
 -- The PC preview tool implements the same API with Pillow.
+--
+-- All widgets draw in *logical* pixels of a 600 px-wide reference screen (Kindle 4).
+-- On bigger/denser screens the canvas multiplies every coordinate and font size by
+-- `scale`, so layouts look the same on a Paperwhite (1072 × 1448) or a Kobo Sage.
 local Blitbuffer = require("ffi/blitbuffer")
 local Font = require("ui/font")
 local TextBoxWidget = require("ui/widget/textboxwidget")
@@ -47,22 +51,32 @@ local function face(o)
     return f
 end
 
-function Canvas.new(bb, ox, oy, w, h)
-    return setmetatable({ bb = bb, ox = ox or 0, oy = oy or 0, W = w, H = h, images = {} }, Canvas)
+-- w, h: logical size; scale: physical pixels per logical pixel
+function Canvas.new(bb, ox, oy, w, h, scale)
+    return setmetatable({ bb = bb, ox = ox or 0, oy = oy or 0, W = w, H = h, s = scale or 1, images = {} }, Canvas)
 end
+
+local floor = math.floor
+-- logical -> physical (absolute position)
+function Canvas:px(x) return self.ox + floor(x * self.s + 0.5) end
+function Canvas:py(y) return self.oy + floor(y * self.s + 0.5) end
+-- logical length -> physical length (edges rounded consistently)
+local function len(self, a, l) return floor((a + l) * self.s + 0.5) - floor(a * self.s + 0.5) end
 
 function Canvas:rect(x, y, w, h, c)
     if w <= 0 or h <= 0 then return end
-    self.bb:paintRect(self.ox + x, self.oy + y, w, h, col(c))
+    self.bb:paintRect(self:px(x), self:py(y), len(self, x, w), len(self, y, h), col(c))
 end
 
 function Canvas:frame(x, y, w, h, bw, c, r)
-    self.bb:paintBorder(self.ox + x, self.oy + y, w, h, bw or 1, col(c), r)
+    self.bb:paintBorder(self:px(x), self:py(y), len(self, x, w), len(self, y, h),
+        math.max(1, floor((bw or 1) * self.s + 0.5)), col(c), r and floor(r * self.s + 0.5) or nil)
 end
 
 function Canvas:roundrect(x, y, w, h, c, r)
+    if w <= 0 or h <= 0 then return end
     if r and r > 0 then
-        self.bb:paintRoundedRect(self.ox + x, self.oy + y, w, h, col(c), r)
+        self.bb:paintRoundedRect(self:px(x), self:py(y), len(self, x, w), len(self, y, h), col(c), floor(r * self.s + 0.5))
     else
         self:rect(x, y, w, h, c)
     end
@@ -72,30 +86,33 @@ function Canvas:hline(x, y, w, t, c) self:rect(x, y, w, t or 1, c) end
 function Canvas:vline(x, y, h, t, c) self:rect(x, y, t or 1, h, c) end
 
 function Canvas:circle(cx, cy, r, c, ring)
-    self.bb:paintCircle(self.ox + cx, self.oy + cy, r, col(c), ring)
+    self.bb:paintCircle(self:px(cx), self:py(cy), floor(r * self.s + 0.5), col(c),
+        ring and math.max(1, floor(ring * self.s + 0.5)) or nil)
 end
 
 function Canvas:invert(x, y, w, h)
-    self.bb:invertRect(self.ox + x, self.oy + y, w, h)
+    self.bb:invertRect(self:px(x), self:py(y), len(self, x, w), len(self, y, h))
 end
 
-local function make_text(s, o)
+local function make_text(self, s, o)
+    local so = { font = o.font, bold = o.bold, icon = o.icon, size = (o.size or 16) * self.s }
     return TextWidget:new{
         text = tostring(s),
-        face = face(o),
+        face = face(so),
         bold = (o.bold and o.font == "mono") and true or false, -- other fonts use real bold files
         fgcolor = col(o.color),
-        max_width = o.maxw,
+        max_width = o.maxw and floor(o.maxw * self.s) or nil,
         padding = 0,
     }
 end
 
+-- returns logical width/height
 function Canvas:measure(s, o)
     o = o or {}
-    local tw = make_text(s, o)
+    local tw = make_text(self, s, o)
     local sz = tw:getSize()
     tw:free()
-    return sz.w, sz.h
+    return sz.w / self.s, sz.h / self.s
 end
 
 -- o: size, bold, font, color, w (box width for align), align, maxw
@@ -103,14 +120,15 @@ function Canvas:text(s, x, y, o)
     o = o or {}
     if s == nil or s == "" then return 0, 0 end
     if o.w and not o.maxw then o.maxw = o.w end
-    local tw = make_text(s, o)
+    local tw = make_text(self, s, o)
     local sz = tw:getSize()
+    local pw = o.w and floor(o.w * self.s) or 0
     local dx = 0
-    if o.w and o.align == "center" then dx = math.floor((o.w - sz.w) / 2)
-    elseif o.w and o.align == "right" then dx = o.w - sz.w end
-    tw:paintTo(self.bb, self.ox + x + dx, self.oy + y)
+    if o.w and o.align == "center" then dx = floor((pw - sz.w) / 2)
+    elseif o.w and o.align == "right" then dx = pw - sz.w end
+    tw:paintTo(self.bb, self:px(x) + dx, self:py(y))
     tw:free()
-    return sz.w, sz.h
+    return sz.w / self.s, sz.h / self.s
 end
 
 function Canvas:icon(cp, x, y, size, o)
@@ -126,9 +144,9 @@ function Canvas:textbox(s, x, y, w, h, o)
     if s == nil or s == "" or w <= 0 or h <= 0 then return 0 end
     local tb = TextBoxWidget:new{
         text = tostring(s),
-        face = face(o),
-        width = w,
-        height = h,
+        face = face({ font = o.font, bold = o.bold, size = (o.size or 16) * self.s }),
+        width = len(self, x, w),
+        height = len(self, y, h),
         height_adjust = true,
         height_overflow_show_ellipsis = true,
         alignment = o.align or "left",
@@ -137,8 +155,8 @@ function Canvas:textbox(s, x, y, w, h, o)
         line_height = o.line_height or 0.2,
     }
     local sz = tb:getSize()
-    tb:paintTo(self.bb, self.ox + x, self.oy + y)
-    local used = tb.text_height or sz.h
+    tb:paintTo(self.bb, self:px(x), self:py(y))
+    local used = (tb.text_height or sz.h) / self.s
     tb:free()
     return math.min(used, h)
 end
@@ -172,8 +190,10 @@ local function cached_image(path, w, h, fill)
 end
 
 function Canvas:image(path, x, y, w, h, o)
-    w, h = math.floor(w), math.floor(h)
     if not path or w <= 0 or h <= 0 then return false end
+    local X, Y = self:px(x) - self.ox, self:py(y) - self.oy
+    w, h = len(self, x, w), len(self, y, h)
+    x, y = X, Y
     local e = cached_image(path, w, h, o and o.fill)
     if not e then return false end
     local sx, sy = math.max(0, math.floor((e.w - w) / 2)), math.max(0, math.floor((e.h - h) / 2))

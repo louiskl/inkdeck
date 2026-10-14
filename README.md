@@ -76,7 +76,8 @@ InkDeck works the other way round:
 ## Supported devices
 
 InkDeck needs [KOReader](https://koreader.rocks). Primary target: **Kindle 4 (non-touch)**. Any device that runs KOReader
-should work: other jailbroken Kindles, Kobo, PocketBook, reMarkable (touch). The layout adapts to the screen size.
+should work: other jailbroken Kindles, Kobo, PocketBook, reMarkable (touch). The layout adapts to the screen size and
+is scaled up automatically on high-resolution screens (set `"ui_scale": 1.2` in `config.json` for bigger text).
 
 > **Status: v0.1 – early.** The code is written against KOReader's source and checked with a preview renderer and tests,
 > but has not yet been run on lots of real hardware. Bug reports with your device model are very welcome!

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Automatic UI scaling for high-resolution screens (Paperwhite, Kobo, reMarkable …): layouts are designed for
+  600 px and scaled up, so text keeps its size. Override with `"ui_scale"` in `config.json`.
+
 ## 0.1.0 – first public preview
 
 - KOReader plugin with pages, grid layout (portrait 2×4 / landscape 4×2), four widget sizes

@@ -41,7 +41,7 @@ end
 package.preload["ui/widget/container/widgetcontainer"] = function() return WidgetContainer end
 package.preload["ui/widget/container/inputcontainer"] = function() return InputContainer end
 
-local W, H, rot = 600, 800, 0
+local W, H, rot = SCREEN_W or 600, SCREEN_H or 800, 0
 local Screen = {
     DEVICE_ROTATED_UPRIGHT = 0, DEVICE_ROTATED_CLOCKWISE = 1,
     DEVICE_ROTATED_UPSIDE_DOWN = 2, DEVICE_ROTATED_COUNTER_CLOCKWISE = 3,
@@ -175,7 +175,7 @@ view:paintTo(FakeBB, 0, 0)
 -- rotate via menu
 view:onInkKey("Menu")
 view:onInkKey("Press")   -- first item: Querformat
-assert(view.dimen.w == 800 and view.dimen.h == 600, "rotation failed: " .. view.dimen.w .. "x" .. view.dimen.h)
+assert(view.dimen.w == (SCREEN_H or 800) and view.dimen.h == (SCREEN_W or 600), "rotation failed: " .. view.dimen.w .. "x" .. view.dimen.h)
 view:paintTo(FakeBB, 0, 0)
 for _, k in ipairs({ "Down", "Right", "Right", "Press", "Back" }) do view:onInkKey(k); view:paintTo(FakeBB, 0, 0) end
 view:onResume()
@@ -211,7 +211,20 @@ v:close()
 '''
 
 
-def run(touch):
+HIRES_TEST = r'''
+local InkDeck = dofile(PLUGIN .. "/main.lua")
+local plugin = InkDeck:new{ ui = { menu = { registerToMainMenu = function() end } } }
+plugin:show()
+local v = plugin.view
+assert(math.abs(v.scale - 1072 / 600) < 0.01, "scale " .. v.scale)
+assert(v.dash.W == 600, "logical width " .. v.dash.W)
+v:paintTo(FakeBB, 0, 0)
+v:onInkKey("Down"); v:onInkKey("Press"); v:paintTo(FakeBB, 0, 0)
+v:close()
+'''
+
+
+def run(touch, hires=False):
     for f in ("config.json", "reminders.json"):
         if os.path.exists(os.path.join(DATA, "inkdeck", f)):
             os.remove(os.path.join(DATA, "inkdeck", f))
@@ -220,8 +233,11 @@ def run(touch):
     lua.globals().DATA_DIR = DATA
     lua.globals().PLUGIN = PLUGIN
     lua.globals().TOUCH = touch
+    if hires:
+        lua.globals().SCREEN_W = 1072
+        lua.globals().SCREEN_H = 1448
     lua.execute(STUBS)
-    lua.execute(TEST)
+    lua.execute(HIRES_TEST if hires else TEST)
     if touch:
         lua.execute(TAP_TEST)
     calls = lua.globals().CALLS
@@ -229,6 +245,9 @@ def run(touch):
 
 
 if __name__ == "__main__":
+    c = run(True, hires=True)
+    assert c.get("logger.err") is None, "draw errors logged (hires)"
+    print("hires 1072x1448 OK")
     for touch in (False, True):
         c = run(touch)
         assert c.get("logger.err") is None, "draw errors logged"

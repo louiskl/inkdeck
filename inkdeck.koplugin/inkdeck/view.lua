@@ -11,6 +11,15 @@ local Screen = Device.screen
 local Canvas = require("inkdeck/canvas_ko")
 local Core = require("inkdeck/core")
 
+-- Logical layout is designed for a 600 px wide screen; bigger screens are scaled up.
+-- config.ui_scale overrides the automatic factor (e.g. 1.2 for bigger text).
+local function uiScale(config)
+    local manual = tonumber(config and config.ui_scale)
+    if manual and manual > 0.3 then return manual end
+    local short = math.min(Screen:getWidth(), Screen:getHeight())
+    return math.max(1, short / 600)
+end
+
 local View = InputContainer:extend{
     name = "inkdeck_view",
     covers_fullscreen = true,
@@ -23,7 +32,9 @@ local KEYS = { "Up", "Down", "Left", "Right", "Press", "Menu" }
 
 function View:init()
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
-    self.dash = Core.new{ config = self.config, ctx = self.ctx, W = self.dimen.w, H = self.dimen.h }
+    self.scale = uiScale(self.config)
+    self.dash = Core.new{ config = self.config, ctx = self.ctx,
+        W = math.floor(self.dimen.w / self.scale), H = math.floor(self.dimen.h / self.scale) }
     if Device:hasKeys() then
         for _, k in ipairs(KEYS) do
             self.key_events["InkKey" .. k] = { { k }, event = "InkKey", args = k }
@@ -49,7 +60,7 @@ function View:setupTouch()
 end
 
 function View:onInkTap(_, ges)
-    self:apply(self.dash:tap(ges.pos.x, ges.pos.y))
+    self:apply(self.dash:tap(ges.pos.x / self.scale, ges.pos.y / self.scale))
     return true
 end
 
@@ -104,18 +115,22 @@ function View:repaint(mode, region)
         mode = "full"
         self.partial_count = 0
     end
-    local geom = region and Geom:new{ x = region.x, y = region.y, w = region.w, h = region.h } or self.dimen
+    local s = self.scale
+    local geom = region and Geom:new{
+        x = math.floor(region.x * s), y = math.floor(region.y * s),
+        w = math.ceil(region.w * s) + 1, h = math.ceil(region.h * s) + 1,
+    } or self.dimen
     UIManager:setDirty(self, function() return mode, geom end)
 end
 
 function View:paintTo(bb, x, y)
     self.dimen.x, self.dimen.y = x, y
-    local c = Canvas.new(bb, x, y, self.dimen.w, self.dimen.h)
+    local c = Canvas.new(bb, x, y, self.dash.W, self.dash.H, self.scale)
     local ok, err = pcall(self.dash.draw, self.dash, c)
     if not ok then
         logger.err("InkDeck: draw failed:", err)
         bb:paintRect(x, y, self.dimen.w, self.dimen.h, Canvas.color("white"))
-        pcall(c.text, c, "InkDeck error: " .. tostring(err), 20, 60, { size = 16, maxw = self.dimen.w - 40 })
+        pcall(c.text, c, "InkDeck error: " .. tostring(err), 20, 60, { size = 16, maxw = self.dash.W - 40 })
     end
 end
 
@@ -176,7 +191,8 @@ end
 function View:relayout()
     if self.closed then return end
     self.dimen = Geom:new{ x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight() }
-    self.dash:setSize(self.dimen.w, self.dimen.h)
+    self.scale = uiScale(self.config)
+    self.dash:setSize(math.floor(self.dimen.w / self.scale), math.floor(self.dimen.h / self.scale))
     if Device:isTouchDevice() then self:setupTouch() end
     Canvas.clearImageCache()
     self.partial_count = 0
