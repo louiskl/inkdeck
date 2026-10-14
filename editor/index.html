@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InkDeck Editor</title>
+<style>
+  :root {
+    --ink: #111; --paper: #f4f2ec; --card: #fff; --line: #d8d4ca; --muted: #6b675e;
+    --accent: #111; --warn: #b3261e; --sel: #fff3c4;
+    --r: 12px;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --ink: #eceae4; --paper: #18181a; --card: #222225; --line: #3a3a3e; --muted: #a3a09a; --accent: #eceae4; --sel: #3d3720; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 2px solid var(--ink); flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .02em; }
+  header h1 span { font-weight: 400; color: var(--muted); }
+  header .spacer { flex: 1; }
+  button, .btn { font: inherit; font-size: 14px; border: 2px solid var(--ink); background: var(--card); color: var(--ink);
+    border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  button.primary { background: var(--ink); color: var(--paper); }
+  button.small { padding: 2px 9px; font-size: 13px; border-width: 1.5px; }
+  button.ghost { border-color: transparent; background: transparent; }
+  button:disabled { opacity: .4; cursor: default; }
+  main { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; padding: 12px; } }
+  section.card { background: var(--card); border: 2px solid var(--ink); border-radius: var(--r); padding: 16px; margin-bottom: 18px; }
+  section.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=url], input[type=number], input[type=date], input[type=password], select, textarea {
+    width: 100%; font: inherit; font-size: 14px; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 8px;
+    background: var(--paper); color: var(--ink); }
+  textarea { min-height: 70px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+  .tab { border: 1.5px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: 14px; background: var(--card); color: var(--ink); }
+  .tab.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .wlist { list-style: none; margin: 0; padding: 0; }
+  .wlist li { border: 1.5px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--card); }
+  .wlist li.open { border-color: var(--ink); }
+  .wlist li.dragover { outline: 3px dashed var(--ink); }
+  .whead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; }
+  .whead .grip { cursor: grab; color: var(--muted); user-select: none; font-size: 18px; line-height: 1; }
+  .whead .name { flex: 1; font-weight: 600; font-size: 14px; }
+  .whead select { width: auto; padding: 3px 6px; font-size: 13px; }
+  .wbody { padding: 0 12px 12px; display: none; }
+  li.open .wbody { display: block; }
+  .palette { display: flex; flex-wrap: wrap; gap: 6px; }
+  .preview-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; position: sticky; top: 12px; }
+  .device { background: #2b2b2b; padding: 26px 22px 46px; border-radius: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  .device.landscape { padding: 22px 46px 22px 26px; }
+  .screen { background: #f2f2ef; position: relative; overflow: hidden; }
+  .status { position: absolute; left: 0; right: 0; top: 0; border-bottom: 1px solid #111; display: flex; align-items: center; gap: 4px; padding: 0 6px; font-size: 11px; color: #111; }
+  .pill { border: 1px solid #888; border-radius: 999px; padding: 1px 8px; }
+  .pill.on { background: #111; color: #fff; border-color: #111; font-weight: 700; }
+  .status .clock { margin-left: auto; font-weight: 700; font-size: 14px; }
+  .tile { position: absolute; border: 2px solid #111; border-radius: 9px; background: #fff; color: #111; overflow: hidden; cursor: grab;
+    display: flex; flex-direction: column; }
+  .tile .th { font-size: 9.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 5px 8px; border-bottom: 1px solid #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .tb { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #444; padding: 4px; text-align: center; }
+  .tile .big { font-family: Georgia, serif; font-weight: 700; font-size: 34px; color: #111; }
+  .tile.sel { border-width: 4px; }
+  .tile.sel .th { background: #111; color: #fff; }
+  .tile.dragover { outline: 3px dashed #111; outline-offset: -6px; }
+  .tile.photo { background: linear-gradient(180deg, #ddd, #888 60%, #444); }
+  .warn { color: var(--warn); font-size: 13px; font-weight: 600; }
+  .seg { display: inline-flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  code { background: var(--paper); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .search-results button { display: block; width: 100%; text-align: left; margin-top: 4px; border-radius: 8px; border-width: 1.5px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper);
+    padding: 10px 18px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>InkDeck <span>Editor</span></h1>
+  <div class="spacer"></div>
+  <label class="btn" style="margin:0;color:var(--ink)">Open config.json<input type="file" id="file" accept=".json,application/json" hidden></label>
+  <button id="reset">Load example</button>
+  <button id="copy">Copy JSON</button>
+  <button class="primary" id="download">Save config.json</button>
+</header>
+
+<main>
+  <div>
+    <section class="card">
+      <h2>Pages</h2>
+      <div class="tabs" id="tabs"></div>
+      <div class="row">
+        <input type="text" id="pagename" placeholder="Page name">
+        <button class="small" id="pageLeft" title="Move left">◀</button>
+        <button class="small" id="pageRight" title="Move right">▶</button>
+        <button class="small" id="pageDel">Delete</button>
+      </div>
+      <p class="hint">On the device, the page-turn keys (or a swipe) switch pages.</p>
+    </section>
+
+    <section class="card">
+      <h2>Widgets on this page</h2>
+      <ul class="wlist" id="wlist"></ul>
+      <div id="overflow"></div>
+      <label>Add widget</label>
+      <div class="palette" id="palette"></div>
+      <p class="hint">Drag to reorder (in the list or the preview). Widgets fill the grid in order, starting top left.</p>
+    </section>
+
+    <section class="card">
+      <h2>General</h2>
+      <label>Orientation at start</label>
+      <div class="seg" id="orientSeg">
+        <button data-o="portrait">Portrait</button><button data-o="landscape">Landscape</button>
+      </div>
+      <label for="lang">Language on the device</label>
+      <select id="lang"><option value="auto">Same as KOReader</option><option value="en">English</option><option value="de">Deutsch</option></select>
+      <label for="tz">Time zone</label>
+      <input type="text" id="tz" list="tzlist" placeholder="system">
+      <datalist id="tzlist">
+        <option>system</option><option>UTC</option>
+        <option>Europe/London</option><option>Europe/Dublin</option><option>Europe/Lisbon</option>
+        <option>Europe/Berlin</option><option>Europe/Vienna</option><option>Europe/Zurich</option><option>Europe/Paris</option>
+        <option>Europe/Amsterdam</option><option>Europe/Brussels</option><option>Europe/Madrid</option><option>Europe/Rome</option>
+        <option>Europe/Prague</option><option>Europe/Warsaw</option><option>Europe/Copenhagen</option><option>Europe/Stockholm</option>
+        <option>Europe/Oslo</option><option>Europe/Helsinki</option><option>Europe/Athens</option>
+        <option>America/New_York</option><option>America/Toronto</option><option>America/Chicago</option>
+        <option>America/Denver</option><option>America/Los_Angeles</option><option>America/Vancouver</option>
+        <option>+05:30</option><option>+09:00</option><option>+10:00</option>
+      </datalist>
+      <p class="hint">“system” uses the device clock’s zone (on some Kindles that is UTC). Other zones: pick one above or enter a fixed offset like <code>+09:00</code>.</p>
+      <label><input type="checkbox" id="clock12"> 12-hour clock (7:46 PM)</label>
+      <label for="focusIdle">Hide the selection frame after (seconds, 0 = never)</label>
+      <input type="number" id="focusIdle" min="0" step="10">
+      <label for="fullEvery">Full e-ink refresh after … partial updates (against ghosting)</label>
+      <input type="number" id="fullEvery" min="0" step="1">
+      <h2 style="margin-top:22px">Home Assistant <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></h2>
+      <label for="haurl">URL</label>
+      <input type="url" id="haurl" placeholder="http://homeassistant.local:8123">
+      <label for="hatoken">Long-lived access token</label>
+      <input type="password" id="hatoken" placeholder="eyJ…">
+      <p class="hint">Home Assistant → your profile → Security → Long-lived access tokens. The token is only written into your config.json – it never leaves your browser otherwise.</p>
+      <h2 style="margin-top:22px">Bridge <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional, only for the Spotify widget)</span></h2>
+      <label for="bridge">Bridge address</label>
+      <input type="url" id="bridge" placeholder="http://192.168.1.20:8765">
+      <p class="hint">Runs on any computer in your network: <code>python3 inkdeck_bridge.py</code> prints the address. Everything else works without it.</p>
+    </section>
+  </div>
+
+  <div class="preview-wrap">
+    <div class="seg" id="previewSeg">
+      <button data-o="portrait">Preview portrait</button><button data-o="landscape">Preview landscape</button>
+    </div>
+    <div class="device" id="device"><div class="screen" id="screen"></div></div>
+    <p class="hint" style="max-width:520px;text-align:center">This is how the page is laid out on a 600 × 800 screen.
+      Drop a tile onto another to swap them. Click a tile to edit its settings.</p>
+    <section class="card" style="max-width:560px">
+      <h2>Get it onto your device</h2>
+      <ol class="hint" style="font-size:13.5px;padding-left:18px;margin:0">
+        <li>Click <b>Save config.json</b>.</li>
+        <li>Connect your e-reader via USB and copy the file into the <code>inkdeck</code> folder (replace the old one).</li>
+        <li>On the device in InkDeck: <b>Menu key → Reload configuration</b>.</li>
+      </ol>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const SIZES = { s: [1, 1], w: [2, 1], t: [1, 2], l: [2, 2] };
+const SIZE_NAMES = { s: "Small", w: "Wide", t: "Tall", l: "Large" };
+const TYPES = {
+  clock:        { name: "Clock" },
+  weather:      { name: "Weather" },
+  calendar:     { name: "Calendar" },
+  news:         { name: "News" },
+  reminders:    { name: "Reminders" },
+  lastfm:       { name: "Now Playing (Last.fm)" },
+  homeassistant:{ name: "Smart Home" },
+  mediaplayer:  { name: "Media Player (HA)" },
+  photo:        { name: "Photo frame" },
+  countdown:    { name: "Countdown" },
+  note:         { name: "Note" },
+  spotify:      { name: "Spotify (bridge)" },
+};
+const NEWS_PRESETS = [
+  ["BBC News", "https://feeds.bbci.co.uk/news/rss.xml"],
+  ["The Guardian", "https://www.theguardian.com/world/rss"],
+  ["Hacker News", "https://hnrss.org/frontpage"],
+  ["The Verge", "https://www.theverge.com/rss/index.xml"],
+  ["tagesschau", "https://www.tagesschau.de/index~rss2.xml"],
+  ["SPIEGEL", "https://www.spiegel.de/schlagzeilen/index.rss"],
+  ["ZEIT", "https://newsfeed.zeit.de/index"],
+  ["heise", "https://www.heise.de/rss/heise-top-atom.xml"],
+  ["hessenschau", "https://www.hessenschau.de/index.rss"],
+];
+
+function defaultConfig() {
+  return {
+    version: 1, language: "auto", orientation: "portrait", timezone: "system", clock_12h: false,
+    hide_focus_after: 120, full_refresh_every: 12, keep_awake: true,
+    bridge: { url: "" }, homeassistant: { url: "", token: "" },
+    grid: { portrait: { cols: 2, rows: 4 }, landscape: { cols: 4, rows: 2 } },
+    pages: [
+      { name: "Home", widgets: [
+        { type: "clock", size: "w" },
+        { type: "weather", size: "s", settings: { city: "London", lat: 51.5072, lon: -0.1276 } },
+        { type: "calendar", size: "t", settings: { urls: [] } },
+        { type: "reminders", size: "s", settings: { items: ["Set up InkDeck", "Copy some photos"] } },
+        { type: "lastfm", size: "w", settings: { username: "", api_key: "" } } ] },
+      { name: "House", widgets: [
+        { type: "homeassistant", size: "l", settings: { entities: [
+          { id: "light.living_room", name: "Living room" }, { id: "light.desk", name: "Desk lamp" },
+          { id: "switch.coffee_machine", name: "Coffee" }, { id: "sensor.room_temperature", name: "Room" } ] } },
+        { type: "photo", size: "w" },
+        { type: "countdown", size: "s", settings: { label: "Christmas", date: "2026-12-24" } },
+        { type: "note", size: "s", settings: { text: "Stay curious." } } ] },
+      { name: "News", widgets: [
+        { type: "news", size: "l" },
+        { type: "weather", size: "w", settings: { city: "London", lat: 51.5072, lon: -0.1276 } },
+        { type: "calendar", size: "w", settings: { urls: [] } } ] },
+    ],
+  };
+}
+
+let cfg = loadDraft() || defaultConfig();
+let pageIdx = 0, openIdx = null, previewOrient = cfg.orientation || "portrait";
+
+function loadDraft() {
+  try { const s = localStorage.getItem("inkdeck-draft-v2"); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+}
+function saveDraft() {
+  try {
+    const copy = JSON.parse(JSON.stringify(cfg));
+    if (copy.homeassistant) copy.homeassistant.token = "";   // never keep secrets in the browser
+    (copy.pages || []).forEach(p => (p.widgets || []).forEach(w => { if (w.settings && w.settings.api_key) w.settings.api_key = ""; }));
+    localStorage.setItem("inkdeck-draft-v2", JSON.stringify(copy));
+  } catch (e) {}
+}
+function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1800); }
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// --- same packing algorithm as inkdeck/layout.lua
+function pack(items, cols, rows) {
+  const occ = new Set(), placed = [], overflow = [];
+  const free = (c, r, cw, ch) => {
+    if (c + cw > cols || r + ch > rows) return false;
+    for (let y = r; y < r + ch; y++) for (let x = c; x < c + cw; x++) if (occ.has(y * cols + x)) return false;
+    return true;
+  };
+  items.forEach((it, i) => {
+    const sz = SIZES[it.size] || SIZES.s, cw = Math.min(sz[0], cols), ch = Math.min(sz[1], rows);
+    let done = false;
+    for (let r = 0; r < rows && !done; r++) for (let c = 0; c < cols && !done; c++) {
+      if (free(c, r, cw, ch)) {
+        for (let y = r; y < r + ch; y++) for (let x = c; x < c + cw; x++) occ.add(y * cols + x);
+        placed.push({ index: i, col: c, row: r, cw, ch }); done = true;
+      }
+    }
+    if (!done) overflow.push(i);
+  });
+  return { placed, overflow };
+}
+
+function page() { return cfg.pages[pageIdx]; }
+
+function render() {
+  if (!cfg.pages.length) cfg.pages.push({ name: "Page 1", widgets: [] });
+  pageIdx = Math.min(pageIdx, cfg.pages.length - 1);
+  // tabs
+  $("tabs").innerHTML = cfg.pages.map((p, i) => `<button class="tab ${i === pageIdx ? "active" : ""}" data-i="${i}">${esc(p.name)}</button>`).join("")
+    + `<button class="tab" id="addPage">+ Page</button>`;
+  $("tabs").querySelectorAll("[data-i]").forEach(b => b.onclick = () => { pageIdx = +b.dataset.i; openIdx = null; render(); });
+  $("addPage").onclick = () => { cfg.pages.push({ name: "Page " + (cfg.pages.length + 1), widgets: [] }); pageIdx = cfg.pages.length - 1; render(); };
+  $("pagename").value = page().name;
+  $("pageLeft").disabled = pageIdx === 0;
+  $("pageRight").disabled = pageIdx === cfg.pages.length - 1;
+  $("pageDel").disabled = cfg.pages.length === 1;
+  // general
+  document.querySelectorAll("#orientSeg button").forEach(b => b.classList.toggle("on", b.dataset.o === (cfg.orientation || "portrait")));
+  document.querySelectorAll("#previewSeg button").forEach(b => b.classList.toggle("on", b.dataset.o === previewOrient));
+  $("tz").value = cfg.timezone || "system";
+  $("lang").value = cfg.language || "auto";
+  $("clock12").checked = !!cfg.clock_12h;
+  $("focusIdle").value = cfg.hide_focus_after ?? 120;
+  $("fullEvery").value = cfg.full_refresh_every ?? 12;
+  $("bridge").value = (cfg.bridge || {}).url || "";
+  $("haurl").value = (cfg.homeassistant || {}).url || "";
+  $("hatoken").value = (cfg.homeassistant || {}).token || "";
+  renderList();
+  renderPreview();
+  saveDraft();
+}
+
+function renderList() {
+  const ws = page().widgets;
+  $("wlist").innerHTML = ws.map((w, i) => `
+    <li draggable="true" data-i="${i}" class="${i === openIdx ? "open" : ""}">
+      <div class="whead">
+        <span class="grip" title="Drag to reorder">⋮⋮</span>
+        <span class="name">${esc(TYPES[w.type]?.name || w.type)}${w.settings?.title ? " · " + esc(w.settings.title) : ""}${w.type === "weather" && w.settings?.city ? " · " + esc(w.settings.city) : ""}</span>
+        <select data-size="${i}" title="Size">${Object.keys(SIZES).map(s => `<option value="${s}" ${w.size === s ? "selected" : ""}>${SIZE_NAMES[s]}</option>`).join("")}</select>
+        <button class="small ghost" data-del="${i}" title="Remove">✕</button>
+      </div>
+      <div class="wbody">${i === openIdx ? settingsForm(w, i) : ""}</div>
+    </li>`).join("");
+  $("wlist").querySelectorAll(".whead").forEach(h => h.onclick = e => {
+    if (e.target.closest("select,button")) return;
+    const i = +h.parentElement.dataset.i; openIdx = openIdx === i ? null : i; renderList(); renderPreview();
+  });
+  $("wlist").querySelectorAll("[data-size]").forEach(s => s.onchange = () => { ws[+s.dataset.size].size = s.value; render(); });
+  $("wlist").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { ws.splice(+b.dataset.del, 1); openIdx = null; render(); });
+  bindDrag($("wlist").querySelectorAll("li"), "li");
+  if (openIdx !== null) bindSettings(ws[openIdx]);
+  // overflow warning
+  const g = (cfg.grid || {})[previewOrient] || (previewOrient === "landscape" ? { cols: 4, rows: 2 } : { cols: 2, rows: 4 });
+  const { overflow } = pack(ws, g.cols, g.rows);
+  $("overflow").innerHTML = overflow.length
+    ? `<p class="warn">⚠ ${overflow.length} widget(s) don’t fit on this page in ${previewOrient}: ${overflow.map(i => esc(TYPES[ws[i].type]?.name)).join(", ")}. Make something smaller or move it to another page.</p>` : "";
+  // palette
+  $("palette").innerHTML = Object.entries(TYPES).map(([t, d]) => `<button class="small" data-add="${t}">+ ${d.name}</button>`).join("");
+  $("palette").querySelectorAll("[data-add]").forEach(b => b.onclick = () => {
+    ws.push({ type: b.dataset.add, size: "s", settings: {} }); openIdx = ws.length - 1; render();
+  });
+}
+
+let dragFrom = null;
+function bindDrag(nodes, kind) {
+  nodes.forEach(n => {
+    n.addEventListener("dragstart", e => { dragFrom = +n.dataset.i; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", n.dataset.i); });
+    n.addEventListener("dragover", e => { e.preventDefault(); n.classList.add("dragover"); });
+    n.addEventListener("dragleave", () => n.classList.remove("dragover"));
+    n.addEventListener("drop", e => {
+      e.preventDefault(); n.classList.remove("dragover");
+      const to = +n.dataset.i, ws = page().widgets;
+      if (dragFrom === null || dragFrom === to) return;
+      if (kind === "tile") { [ws[dragFrom], ws[to]] = [ws[to], ws[dragFrom]]; }
+      else { const [it] = ws.splice(dragFrom, 1); ws.splice(to, 0, it); }
+      if (openIdx === dragFrom) openIdx = to;
+      dragFrom = null; render();
+    });
+  });
+}
+
+// ---- per-widget settings
+const lines = a => (a || []).join("\n");
+const unlines = s => s.split("\n").map(x => x.trim()).filter(Boolean);
+function field(id, label, value, type = "text", hint = "") {
+  return `<label for="${id}">${label}</label><input type="${type}" id="${id}" value="${esc(value)}">${hint ? `<p class="hint">${hint}</p>` : ""}`;
+}
+function area(id, label, value, hint = "") {
+  return `<label for="${id}">${label}</label><textarea id="${id}">${esc(value)}</textarea>${hint ? `<p class="hint">${hint}</p>` : ""}`;
+}
+function settingsForm(w) {
+  const s = w.settings || {};
+  const title = field("s_title", "Title (optional)", s.title || "");
+  switch (w.type) {
+    case "clock": return title;
+    case "weather": return `${field("s_city", "Place", s.city || "")}
+      <div class="row" style="margin-top:6px"><button class="small" id="geo">Find place</button><span class="hint" id="geoInfo">${s.lat ? `${s.lat}, ${s.lon}` : "No coordinates yet"}</span></div>
+      <div class="search-results" id="geoRes"></div>
+      <p class="hint">Weather data by Open-Meteo – free, no account needed.</p>`;
+    case "calendar": return title + area("s_urls", "ICS links (one per line)", lines(s.urls),
+      "Google Calendar: Settings → your calendar → “Secret address in iCal format”. iCloud: share calendar → Public calendar. Outlook: Publish calendar → ICS. Recurring events are supported.")
+      + field("s_days", "Days ahead", s.days || 30, "number");
+    case "news": return area("s_feeds", "Feeds (Name | URL, one per line)", (s.feeds || NEWS_PRESETS.slice(0, 1).map(([n, u]) => ({ name: n, url: u }))).map(f => typeof f === "string" ? f : `${f.name || ""} | ${f.url}`).join("\n"))
+      + `<div class="palette" style="margin-top:6px">${NEWS_PRESETS.map(([n, u]) => `<button class="small" data-feed="${esc(n)}|${esc(u)}">+ ${esc(n)}</button>`).join("")}</div>`
+      + `<p class="hint">With several feeds, ◀ ▶ switches between them in the full view.</p>`;
+    case "reminders": return title + area("s_items", "Initial items (one per line)", lines(s.items),
+      "Only used on first start. After that you manage reminders on the device (check off, delete, add with the on-screen keyboard).");
+    case "lastfm": return title + field("s_lfuser", "Last.fm username", s.username || "")
+      + field("s_lfkey", "Last.fm API key", s.api_key || "", "text",
+        'Free: <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener">last.fm/api/account/create</a>. Connect Spotify/Apple Music/etc. to Last.fm (“scrobbling”) and this widget shows what you play – no login on the device.');
+    case "mediaplayer": return title + field("s_mpent", "media_player entity", s.entity || "", "text",
+      "e.g. <code>media_player.spotify_yourname</code> or a Sonos/Chromecast player. Uses the Home Assistant URL + token below. OK = play/pause, ◀ ▶ = track, ▲ ▼ = volume.");
+    case "spotify": return title + `<p class="hint">Needs the optional InkDeck bridge (address under “General”) and Spotify Premium for playback control. Prefer Last.fm or the Media Player widget if you want zero setup.</p>`;
+    case "homeassistant": return title + area("s_entities", "Entities (entity_id | name, one per line)",
+      (s.entities || []).map(e => typeof e === "string" ? e : `${e.id}${e.name ? " | " + e.name : ""}`).join("\n"),
+      "e.g. <code>light.living_room | Living room</code>. Lights (toggle + dim), switches, scenes, scripts, sensors.");
+    case "photo": return field("s_folder", "Folder on the device", s.folder || "photos", "text", "Relative to the inkdeck folder. JPG and PNG.")
+      + field("s_change", "Change photo every … minutes", s.change_minutes || 10, "number")
+      + `<label><input type="checkbox" id="s_shuffle" ${s.shuffle !== false ? "checked" : ""}> Shuffle</label>`
+      + `<label><input type="checkbox" id="s_fill" ${s.fill !== false ? "checked" : ""}> Fill the tile (crop)</label>`;
+    case "countdown": return field("s_label", "Event", s.label || "") + field("s_date", "Date", s.date || "", "date");
+    case "note": return title + area("s_text", "Text", s.text || "")
+      + `<label><input type="checkbox" id="s_rotate" ${s.rotate_file ? "checked" : ""}> Instead show a random line from <code>notes.txt</code> every hour</label>`;
+  }
+  return title;
+}
+function bindSettings(w) {
+  w.settings = w.settings || {};
+  const s = w.settings;
+  const on = (id, fn) => { const el = $(id); if (el) el.addEventListener("input", () => { fn(el); renderPreview(); saveDraft(); }); };
+  on("s_title", el => { if (el.value.trim()) s.title = el.value.trim(); else delete s.title; });
+  on("s_city", el => s.city = el.value.trim());
+  on("s_urls", el => s.urls = unlines(el.value));
+  on("s_days", el => s.days = +el.value || 30);
+  on("s_feeds", el => s.feeds = unlines(el.value).map(l => { const [a, b] = l.split("|").map(x => x.trim()); return b ? { name: a, url: b } : { url: a }; }));
+  on("s_items", el => s.items = unlines(el.value));
+  on("s_entities", el => s.entities = unlines(el.value).map(l => { const [a, b] = l.split("|").map(x => x.trim()); return b ? { id: a, name: b } : { id: a }; }));
+  on("s_folder", el => s.folder = el.value.trim() || "photos");
+  on("s_change", el => s.change_minutes = +el.value || 10);
+  on("s_label", el => s.label = el.value);
+  on("s_date", el => s.date = el.value);
+  on("s_text", el => s.text = el.value);
+  on("s_lfuser", el => s.username = el.value.trim());
+  on("s_lfkey", el => s.api_key = el.value.trim());
+  on("s_mpent", el => s.entity = el.value.trim());
+  const chk = (id, key, invert) => { const el = $(id); if (el) el.onchange = () => { s[key] = el.checked; saveDraft(); }; };
+  chk("s_shuffle", "shuffle"); chk("s_fill", "fill"); chk("s_rotate", "rotate_file");
+  if (w.type === "news" && !s.feeds) s.feeds = [{ name: NEWS_PRESETS[0][0], url: NEWS_PRESETS[0][1] }];
+  document.querySelectorAll("[data-feed]").forEach(b => b.onclick = () => {
+    const [n, u] = b.dataset.feed.split("|"); s.feeds = s.feeds || [];
+    if (!s.feeds.some(f => f.url === u)) s.feeds.push({ name: n, url: u });
+    renderList();
+  });
+  const geo = $("geo");
+  if (geo) geo.onclick = async () => {
+    const q = (s.city || "").trim(); if (!q) return toast("Enter a place first");
+    $("geoRes").innerHTML = '<p class="hint">Searching …</p>';
+    try {
+      const r = await fetch("https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&name=" + encodeURIComponent(q));
+      const d = await r.json();
+      $("geoRes").innerHTML = (d.results || []).map((x, i) => `<button class="small" data-g="${i}">${esc(x.name)}, ${esc(x.admin1 || "")} ${esc(x.country_code || "")}</button>`).join("") || '<p class="hint">Nothing found.</p>';
+      $("geoRes").querySelectorAll("[data-g]").forEach(b => b.onclick = () => {
+        const x = d.results[+b.dataset.g]; s.city = x.name; s.lat = +x.latitude.toFixed(4); s.lon = +x.longitude.toFixed(4); render();
+        toast("Place set: " + x.name);
+      });
+    } catch (e) { $("geoRes").innerHTML = '<p class="warn">Search failed (offline?). You can also put lat/lon into config.json by hand.</p>'; }
+  };
+}
+
+// ---- preview
+function tileBody(w, p) {
+  const s = w.settings || {};
+  switch (w.type) {
+    case "clock": return `<span class="big">19:46</span>`;
+    case "weather": return `<span><span class="big" style="font-family:inherit">12°</span><br>${esc(s.city || "")}</span>`;
+    case "calendar": return `<span>${(s.urls || []).length} calendar(s)</span>`;
+    case "news": return `<span>${(s.feeds || [{}]).length} Feed(s)</span>`;
+    case "reminders": return `<span>☐ ${esc((s.items || [])[0] || "Reminder")}</span>`;
+    case "spotify": case "lastfm": case "mediaplayer": return `<span>♫ Now Playing</span>`;
+    case "homeassistant": return `<span>${(s.entities || []).length} devices</span>`;
+    case "photo": return ``;
+    case "countdown": return `<span>${esc(s.label || "")}<br>${esc(s.date || "")}</span>`;
+    case "note": return `<span style="font-family:Georgia,serif">${esc((s.text || "").slice(0, 60))}</span>`;
+  }
+  return "";
+}
+function renderPreview() {
+  const land = previewOrient === "landscape";
+  const W = land ? 800 : 600, H = land ? 600 : 800;
+  const scale = Math.min(1, (Math.min(window.innerWidth - 80, 620)) / W, 0.62 * window.innerHeight / H) * (window.innerWidth < 860 ? 1 : 0.95);
+  const sc = Math.max(0.42, scale);
+  const screen = $("screen");
+  $("device").classList.toggle("landscape", land);
+  screen.style.width = W * sc + "px"; screen.style.height = H * sc + "px";
+  const g = (cfg.grid || {})[previewOrient] || (land ? { cols: 4, rows: 2 } : { cols: 2, rows: 4 });
+  const ws = page().widgets;
+  const { placed } = pack(ws, g.cols, g.rows);
+  const statusH = 40, gap = 10;
+  const cw = (W - gap * (g.cols + 1)) / g.cols, ch = (H - statusH - gap * (g.rows + 1)) / g.rows;
+  let html = `<div class="status" style="height:${statusH * sc}px">${cfg.pages.map((p, i) => `<span class="pill ${i === pageIdx ? "on" : ""}">${esc(p.name)}</span>`).join("")}<span class="clock">19:46</span></div>`;
+  placed.forEach(p => {
+    const w = ws[p.index];
+    const x = gap + p.col * (cw + gap), y = statusH + gap + p.row * (ch + gap);
+    const ww = p.cw * cw + (p.cw - 1) * gap, hh = p.ch * ch + (p.ch - 1) * gap;
+    html += `<div class="tile ${w.type === "photo" ? "photo" : ""} ${p.index === openIdx ? "sel" : ""}" draggable="true" data-i="${p.index}"
+      style="left:${x * sc}px;top:${y * sc}px;width:${ww * sc}px;height:${hh * sc}px">
+      <div class="th">${esc(s_title(w))}</div><div class="tb">${tileBody(w, p)}</div></div>`;
+  });
+  if (!placed.length) html += `<div style="position:absolute;top:45%;width:100%;text-align:center;color:#666;font-size:13px">Empty page – add widgets on the left</div>`;
+  screen.innerHTML = html;
+  screen.querySelectorAll(".tile").forEach(t => t.onclick = () => { openIdx = +t.dataset.i; renderList(); renderPreview(); });
+  bindDrag(screen.querySelectorAll(".tile"), "tile");
+}
+function s_title(w) {
+  const s = w.settings || {};
+  if (w.type === "weather") return s.title || s.city || "Weather";
+  return s.title || TYPES[w.type]?.name || w.type;
+}
+
+// ---- global handlers
+$("pagename").oninput = e => { page().name = e.target.value || "Seite"; render(); $("pagename").focus(); };
+$("pageLeft").onclick = () => { const p = cfg.pages; [p[pageIdx - 1], p[pageIdx]] = [p[pageIdx], p[pageIdx - 1]]; pageIdx--; render(); };
+$("pageRight").onclick = () => { const p = cfg.pages; [p[pageIdx + 1], p[pageIdx]] = [p[pageIdx], p[pageIdx + 1]]; pageIdx++; render(); };
+$("pageDel").onclick = () => { if (confirm(`Delete page “${page().name}”?`)) { cfg.pages.splice(pageIdx, 1); pageIdx = 0; openIdx = null; render(); } };
+document.querySelectorAll("#orientSeg button").forEach(b => b.onclick = () => { cfg.orientation = b.dataset.o; previewOrient = b.dataset.o; render(); });
+document.querySelectorAll("#previewSeg button").forEach(b => b.onclick = () => { previewOrient = b.dataset.o; render(); });
+$("tz").oninput = e => { cfg.timezone = e.target.value.trim() || "system"; saveDraft(); };
+$("lang").onchange = e => { cfg.language = e.target.value; saveDraft(); };
+$("clock12").onchange = e => { cfg.clock_12h = e.target.checked; saveDraft(); };
+$("focusIdle").oninput = e => { cfg.hide_focus_after = +e.target.value || 0; saveDraft(); };
+$("fullEvery").oninput = e => { cfg.full_refresh_every = +e.target.value || 0; saveDraft(); };
+$("bridge").oninput = e => { cfg.bridge = { url: e.target.value.trim() }; saveDraft(); };
+$("haurl").oninput = e => { cfg.homeassistant = { ...(cfg.homeassistant || {}), url: e.target.value.trim() }; saveDraft(); };
+$("hatoken").oninput = e => { cfg.homeassistant = { ...(cfg.homeassistant || {}), token: e.target.value.trim() }; };
+$("reset").onclick = () => { if (confirm("Replace your current draft with the example?")) { cfg = defaultConfig(); pageIdx = 0; openIdx = null; render(); } };
+$("file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { cfg = JSON.parse(await f.text()); cfg.pages = cfg.pages || []; pageIdx = 0; openIdx = null; previewOrient = cfg.orientation || "portrait"; render(); toast("config.json loaded"); }
+  catch (err) { alert("That file is not valid JSON:\n" + err.message); }
+  e.target.value = "";
+};
+function output() { return JSON.stringify(cfg, null, 2); }
+$("download").onclick = () => {
+  const blob = new Blob([output()], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "config.json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("config.json saved – now copy it to your device");
+};
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(output()); toast("JSON copied"); } catch (e) { prompt("Copy JSON:", output()); }
+};
+window.addEventListener("resize", renderPreview);
+render();
+</script>
+</body>
+</html>

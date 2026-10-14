@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install lupa pillow fonttools
+      - name: Fetch KOReader fonts (for the preview renderer)
+        run: git clone --depth 1 https://github.com/koreader/koreader-fonts /tmp/koreader-fonts
+      - name: Lua syntax check
+        run: |
+          python - <<'PY'
+          import glob, sys
+          from lupa import luajit21
+          lua = luajit21.LuaRuntime()
+          bad = 0
+          for f in glob.glob("inkdeck.koplugin/**/*.lua", recursive=True):
+              err = lua.eval(f'(function() local _, e = loadfile("{f}") return e end)()')
+              if err:
+                  print(err); bad += 1
+          sys.exit(bad)
+          PY
+      - name: Unit tests
+        run: python tools/test_util.py
+      - name: KOReader integration tests
+        run: python tools/test_glue.py
+      - name: Bridge syntax
+        run: python -m py_compile bridge/inkdeck_bridge.py
+      - name: Render previews
+        run: |
+          python tools/preview.py --fonts /tmp/koreader-fonts --out /tmp/previews
+          python tools/preview.py --fonts /tmp/koreader-fonts --out /tmp/previews/de --lang de
+      - uses: actions/upload-artifact@v4
+        with:
+          name: previews
+          path: /tmp/previews/*.png

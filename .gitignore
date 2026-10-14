@@ -1,0 +1,6 @@
+previews/_data*/
+previews/de/_data*/
+dist/
+__pycache__/
+*.tmp
+.DS_Store
