@@ -167,8 +167,18 @@ local RenderImage = require("ui/renderimage")
 local img_cache, img_order = {}, {}
 local IMG_CACHE_MAX = 4
 
+local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+
+-- the key includes the file's mtime + size, so a file that was overwritten
+-- (e.g. a new album cover downloaded to the same path) is decoded again
+local function file_stamp(path)
+    if not ok_lfs then return "" end
+    local a = lfs.attributes(path)
+    return a and ((a.modification or 0) .. ":" .. (a.size or 0)) or ""
+end
+
 local function cached_image(path, w, h, fill)
-    local key = table.concat({ path, w, h, fill and "f" or "c" }, "|")
+    local key = table.concat({ path, file_stamp(path), w, h, fill and "f" or "c" }, "|")
     local e = img_cache[key]
     if e then return e end
     local ok, bb = pcall(RenderImage.renderImageFile, RenderImage, path, false)

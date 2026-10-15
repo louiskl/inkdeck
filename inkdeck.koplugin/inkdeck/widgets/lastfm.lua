@@ -16,7 +16,10 @@ local LastFM = Base.define{
     defaults = { username = "", api_key = "" },
 }
 
-function LastFM:fullInterval() return 15 end
+-- Poll faster while something is playing, slower when idle. Each poll is one small
+-- HTTPS request (~1 s on a Kindle 4, input is blocked meanwhile), so 15 s is a good balance.
+local FAST, SLOW = 15, 60
+function LastFM:fullInterval() return 10 end
 
 -- Last.fm's grey star placeholder image
 local PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"
@@ -73,8 +76,11 @@ function LastFM:update(now)
     end
     local changed = not self.now or self.now.title ~= n.title or self.now.playing ~= n.playing
     if img and img ~= self.cover_url then
-        local path = self.ctx.cache_dir .. "/lastfm_cover.img"
+        -- unique file per cover, so image caches never show a stale picture
+        self.cover_n = ((self.cover_n or 0) % 1000) + 1
+        local path = self.ctx.cache_dir .. "/lastfm_cover_" .. self.cover_n .. ".img"
         if self.ctx.net.download(img, path) then
+            if self.cover_path and self.cover_path ~= path then os.remove(self.cover_path) end
             self.cover_url = img
             self.cover_path = path
             changed = true
@@ -83,6 +89,7 @@ function LastFM:update(now)
         self.cover_url, self.cover_path = nil, nil
     end
     self.now = n
+    self.interval = n.playing and FAST or SLOW
     self.fetched_at = now
     self.error = nil
     self.has_data = true
